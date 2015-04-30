@@ -57,17 +57,17 @@ architecture syn of UENGINE is
 	constant One : unsigned(15 downto 0) := "0000000000000001";
 	constant MaxInt : unsigned(15 downto 0) := "1111111111111111";
 
-	constant IncPc : unsigned(1 downto 0) := "00";
+	constant IncPc  : unsigned(1 downto 0) := "00";
 	constant JmpRel : unsigned(1 downto 0) := "01";
 	constant JmpAbs : unsigned(1 downto 0) := "10";
 
 	subtype cond_t is std_logic_vector(2 downto 0);
-	constant CondNever : cond_t := "000";
-	constant CondZero : cond_t := "001";
-	constant CondCarry : cond_t := "010";
-	constant CondNotZero : cond_t := "101";
+	constant CondNever    : cond_t := "000";
+	constant CondZero     : cond_t := "001";
+	constant CondCarry    : cond_t := "010";
+	constant CondNotZero  : cond_t := "101";
 	constant CondNotCarry : cond_t := "110";
-	constant CondAlways : cond_t := "111";
+	constant CondAlways   : cond_t := "111";
 
 	subtype reg_op_t is integer range 0 to 15;
 
@@ -76,9 +76,13 @@ architecture syn of UENGINE is
 			pc : unsigned(1 downto 0);
 			cond : cond_t;
 			alu_op : alu_op_t;
+			alu_16: std_logic; -- '0' 8bit, '1' 16bit
 			src_0 : reg_op_t;
+			src_0_hi: std_logic; -- '1' use high bits of register when 8bits
 			src_1 : reg_op_t;
+			src_1_hi: std_logic;
 			dst : reg_op_t;
+			dst_hi: std_logic;
 			use_immediate : std_logic;
 			immediate : unsigned(15 downto 0);
 		end record;
@@ -86,15 +90,12 @@ architecture syn of UENGINE is
 	type ucode_array_t is array (0 to 15) of ucode_t;
 	
 	constant ucode : ucode_array_t := (
-		(IncPc, CondAlways, AluMove, 0, 0, 0, '1', MaxInt),  -- R0 <- 11
-		(IncPc, CondAlways, AluNot, 0, 0, 0, '1', MaxInt),  -- R0 <- 0
-		(IncPc, CondAlways, AluMove, 0, 0, 1, '1', One),   -- R1 <- 1
-		(IncPc, CondAlways, AluMove, 0, 0, 2, '1', One),   -- R2 <- 1
-		(IncPc, CondAlways, AluAdd,  1, 2, 0, '0', Zero),  -- R0 <- R1 + R2
-		(IncPc, CondAlways, AluMove, 0, 0, 0, '1', One),   -- R0 <- 1
-		(JmpAbs, CondNotZero, AluNone, 0, 0, 0, '0', Zero), -- JMP 0
-		(JmpAbs, CondZero, AluNone, 0, 0, 0, '0', One), -- JMP 1
-		others => (JmpAbs, CondAlways, AluNone, 0, 0, 0, '0', Zero)
+		(IncPc,  CondAlways,  AluMove, '1', 0, '0', 0, '0', 0, '0', '1', One),    -- R0 <- 1
+		(IncPc,  CondAlways,  AluLsh,  '1', 0, '0', 0, '0', 0, '0', '0', Zero),   -- R0 <- R0 << 1
+		(IncPc,  CondAlways,  AluRsh,  '1', 0, '0', 0, '0', 0, '0', '0', Zero),   -- R0 <- R0 >> 1
+		(JmpAbs, CondAlways,  AluNone, '1', 0, '0', 0, '0', 0, '0', '0', One),    -- JMP 1
+		others =>
+		(JmpAbs, CondAlways,  AluNone, '1', 0, '0', 0, '0', 0, '0', '0', Zero)
 		);
 
 begin
@@ -121,6 +122,12 @@ begin
 						res17 := ("0" & R(uop.src_0)) + ("0" & B);
 						res := res17(15 downto 0);
 						flag_C <= res17(16);
+					elsif uop.alu_op = AluLsh then
+						res := R(uop.src_0)(14 downto 0) & "0";
+						flag_C <= R(uop.src_0)(15);
+					elsif uop.alu_op = AluRsh then
+						res := "0" & R(uop.src_0)(15 downto 1);
+						flag_C <= R(uop.src_0)(0);
 					elsif uop.alu_op = AluAnd then
 						res := R(uop.src_0) and B;
 					elsif uop.alu_op = AluOr then
